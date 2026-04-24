@@ -32,11 +32,16 @@ const statusColors: Record<Status, string> = {
   'Hotovo': 'bg-[#1a3a2a] text-green-300',
 };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, labelFor, children }: { label: string; labelFor?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 py-3 border-b border-[#1a1a1a]">
-      <div className="w-28 flex-shrink-0 text-xs text-[#555] pt-0.5">{label}</div>
-      <div className="flex-1">{children}</div>
+      <label
+        htmlFor={labelFor}
+        className={`w-28 flex-shrink-0 text-xs text-[#555] pt-0.5${labelFor ? ' cursor-pointer' : ''}`}
+      >
+        {label}
+      </label>
+      <div className="flex-1 min-w-0">{children}</div>
     </div>
   );
 }
@@ -350,14 +355,24 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                   </div>
                 </Field>
 
-                <Field label="Deadline">
+                <Field label="Deadline" labelFor="task-deadline">
                   <div className="flex items-center gap-2">
-                    <Calendar size={13} className="text-[#555]" />
+                    <Calendar size={13} className="text-[#555] flex-shrink-0" />
                     <input
+                      id="task-deadline"
                       type="date"
                       value={task.deadline}
                       onChange={e => patch('deadline', e.target.value)}
-                      className="bg-transparent text-sm text-[#aaa] outline-none cursor-pointer hover:text-white transition-colors [color-scheme:dark]"
+                      className={[
+                        'flex-1 min-w-0 min-h-[44px]',
+                        'bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3',
+                        'text-sm outline-none cursor-pointer',
+                        'transition-colors hover:border-[#3a3a3a]',
+                        '[color-scheme:dark]',
+                        // appearance:none removes browser chrome but keeps native picker
+                        '[appearance:none]',
+                        task.deadline ? 'text-[#aaa]' : 'text-[#555]',
+                      ].join(' ')}
                     />
                   </div>
                 </Field>
