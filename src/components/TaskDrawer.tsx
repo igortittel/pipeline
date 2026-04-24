@@ -253,7 +253,7 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 w-[480px] bg-[#111] border-l border-[#1e1e1e] z-50 flex flex-col overflow-hidden"
+            className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] bg-[#111] border-l border-[#1e1e1e] z-50 flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#1a1a1a]">

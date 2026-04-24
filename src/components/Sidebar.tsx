@@ -6,6 +6,8 @@ import type { Pipeline } from '../types';
 interface SidebarProps {
   pipelines: Pipeline[];
   activePipelineId: string | null;
+  isOpen: boolean;
+  onClose: () => void;
   onSelect: (id: string) => void;
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
@@ -18,7 +20,7 @@ interface MenuState {
   y: number;
 }
 
-export function Sidebar({ pipelines, activePipelineId, onSelect, onCreate, onRename, onDelete }: SidebarProps) {
+export function Sidebar({ pipelines, activePipelineId, isOpen, onClose, onSelect, onCreate, onRename, onDelete }: SidebarProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -63,18 +65,39 @@ export function Sidebar({ pipelines, activePipelineId, onSelect, onCreate, onRen
 
   return (
     <>
-      <aside className="w-56 flex-shrink-0 h-full border-r border-[#1e1e1e] flex flex-col bg-[#0f0f0f]">
+      {/* Sidebar — fixed overlay on mobile, in-flow on md+ */}
+      <aside
+        className={[
+          'fixed inset-y-0 left-0 z-40',
+          'md:relative md:translate-x-0',
+          'w-56 flex-shrink-0 h-full border-r border-[#1e1e1e] flex flex-col bg-[#0f0f0f]',
+          'transition-transform duration-200 ease-in-out',
+          isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+        ].join(' ')}
+      >
         <div className="px-4 pt-5 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#888] text-xs font-medium uppercase tracking-wider">
             <Layers size={12} />
             Pipelines
           </div>
-          <button
-            onClick={() => setCreating(true)}
-            className="text-[#555] hover:text-white transition-colors p-1 rounded hover:bg-[#1e1e1e]"
-          >
-            <Plus size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCreating(true)}
+              className="text-[#555] hover:text-white transition-colors p-1 rounded hover:bg-[#1e1e1e]"
+            >
+              <Plus size={14} />
+            </button>
+            {/* Close button — mobile only */}
+            <button
+              onClick={onClose}
+              className="md:hidden text-[#555] hover:text-white transition-colors p-1 rounded hover:bg-[#1e1e1e]"
+              aria-label="Close sidebar"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 pb-4">
@@ -101,7 +124,7 @@ export function Sidebar({ pipelines, activePipelineId, onSelect, onCreate, onRen
                 ) : (
                   <button
                     onClick={() => onSelect(p.id)}
-                    className={`group w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-sm transition-all ${
+                    className={`group w-full flex items-center justify-between px-2 py-2 rounded-lg text-sm transition-all ${
                       activePipelineId === p.id
                         ? 'bg-[#1a1a1a] text-white'
                         : 'text-[#888] hover:text-white hover:bg-[#161616]'

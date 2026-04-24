@@ -16,12 +16,13 @@ import { TaskCard, TaskCardOverlay } from './TaskCard';
 
 interface PipelineViewProps {
   pipeline: Pipeline;
+  onMenuClick: () => void;
   onCreateTask: (title: string) => void;
   onTaskClick: (task: Task) => void;
   onReorder: (orderedIds: string[]) => void;
 }
 
-export function PipelineView({ pipeline, onCreateTask, onTaskClick, onReorder }: PipelineViewProps) {
+export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick, onReorder }: PipelineViewProps) {
   const [newTitle, setNewTitle] = useState('');
   const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -59,21 +60,34 @@ export function PipelineView({ pipeline, onCreateTask, onTaskClick, onReorder }:
 
   return (
     <div className="flex-1 h-full overflow-y-auto">
-      <div className="max-w-[800px] mx-auto px-6 py-8">
+      <div className="max-w-[800px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-semibold text-white tracking-tight">{pipeline.name}</h1>
-            <p className="text-xs text-[#555] mt-0.5">
-              {pipeline.tasks.length} task{pipeline.tasks.length !== 1 ? 's' : ''}
-            </p>
+        <div className="flex items-center justify-between mb-5 sm:mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Hamburger — mobile only */}
+            <button
+              onClick={onMenuClick}
+              className="md:hidden flex-shrink-0 text-[#555] hover:text-white transition-colors p-1.5 rounded-lg hover:bg-[#1e1e1e]"
+              aria-label="Open menu"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-semibold text-white tracking-tight truncate">{pipeline.name}</h1>
+              <p className="text-xs text-[#555] mt-0.5">
+                {pipeline.tasks.length} task{pipeline.tasks.length !== 1 ? 's' : ''}
+              </p>
+            </div>
           </div>
           <button
             onClick={() => setAdding(true)}
-            className="flex items-center gap-2 text-sm text-[#666] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-xl px-3 py-2 transition-all hover:bg-[#161616]"
+            className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-[#666] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 transition-all hover:bg-[#161616] flex-shrink-0"
           >
-            <Plus size={14} />
-            Add task
+            <Plus size={13} />
+            <span className="hidden xs:inline">Add task</span>
+            <span className="xs:hidden">Add</span>
           </button>
         </div>
 
@@ -106,7 +120,7 @@ export function PipelineView({ pipeline, onCreateTask, onTaskClick, onReorder }:
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-24 text-center"
+            className="flex flex-col items-center justify-center py-16 sm:py-24 text-center"
           >
             <Inbox size={32} className="text-[#333] mb-4" />
             <p className="text-[#444] text-sm">No tasks yet</p>
