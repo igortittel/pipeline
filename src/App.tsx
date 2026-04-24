@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Auth, useAuth } from './components/Auth';
+import { Auth, useAuth, PASSWORD_KEY } from './components/Auth';
 import { Sidebar } from './components/Sidebar';
 import { PipelineView } from './components/PipelineView';
 import { TaskDrawer } from './components/TaskDrawer';
@@ -12,6 +12,11 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const store = useAppStore();
+
+  function handleLogout() {
+    localStorage.removeItem(PASSWORD_KEY);
+    setAuthenticated(false);
+  }
 
   // Keep selectedTask in sync with store updates
   useEffect(() => {
@@ -58,6 +63,7 @@ export default function App() {
         onCreate={store.createPipeline}
         onRename={store.renamePipeline}
         onDelete={store.deletePipeline}
+        onLogout={handleLogout}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">

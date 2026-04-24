@@ -11,7 +11,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Plus, Inbox } from 'lucide-react';
-import type { Pipeline, Task } from '../types';
+import type { Pipeline, Task, Status, Priority } from '../types';
 import { TaskCard, TaskCardOverlay } from './TaskCard';
 
 interface PipelineViewProps {
@@ -22,17 +22,37 @@ interface PipelineViewProps {
   onReorder: (orderedIds: string[]) => void;
 }
 
+const ALL_STATUSES: Status[] = ['Nový', 'Pracujem na tom', 'Na kontrole', 'Hotovo'];
+const ALL_PRIORITIES: Priority[] = ['low', 'medium', 'high'];
+const ALL_ASSIGNEES = ['Dávid', 'Igor', 'Stano'];
+
+const priorityLabels: Record<Priority, string> = { low: 'Low', medium: 'Medium', high: 'High' };
+
+const filterSelect = 'bg-[#141414] border border-[#222] text-[#666] rounded-lg px-2.5 py-1 text-xs outline-none hover:border-[#333] hover:text-[#aaa] transition-colors [color-scheme:dark] cursor-pointer';
+
 export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick, onReorder }: PipelineViewProps) {
   const [newTitle, setNewTitle] = useState('');
   const [adding, setAdding] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
   const sortedTasks = [...pipeline.tasks].sort((a, b) => a.order - b.order);
   const activeTask = activeId ? sortedTasks.find(t => t.id === activeId) : null;
+
+  const filteredTasks = sortedTasks.filter(task => {
+    if (filterStatus && task.status !== filterStatus) return false;
+    if (filterPriority && task.priority !== filterPriority) return false;
+    if (filterAssignee && task.assignee !== filterAssignee) return false;
+    return true;
+  });
+
+  const hasActiveFilters = filterStatus || filterPriority || filterAssignee;
 
   function handleDragStart(event: { active: { id: string | number } }) {
     setActiveId(String(event.active.id));
@@ -62,7 +82,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
     <div className="flex-1 h-full overflow-y-auto">
       <div className="max-w-[800px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-5 sm:mb-6">
+        <div className="flex items-center justify-between mb-4 sm:mb-5">
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger — mobile only */}
             <button
@@ -89,6 +109,42 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
             <span className="hidden xs:inline">Add task</span>
             <span className="xs:hidden">Add</span>
           </button>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className={filterSelect}
+          >
+            <option value="">All statuses</option>
+            {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            value={filterPriority}
+            onChange={e => setFilterPriority(e.target.value)}
+            className={filterSelect}
+          >
+            <option value="">All priorities</option>
+            {ALL_PRIORITIES.map(p => <option key={p} value={p}>{priorityLabels[p]}</option>)}
+          </select>
+          <select
+            value={filterAssignee}
+            onChange={e => setFilterAssignee(e.target.value)}
+            className={filterSelect}
+          >
+            <option value="">All assignees</option>
+            {ALL_ASSIGNEES.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          {hasActiveFilters && (
+            <button
+              onClick={() => { setFilterStatus(''); setFilterPriority(''); setFilterAssignee(''); }}
+              className="text-xs text-[#555] hover:text-[#888] transition-colors px-1"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         {/* New task input */}
@@ -141,7 +197,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
             <SortableContext items={sortedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
                 <AnimatePresence>
-                  {sortedTasks.map(task => (
+                  {filteredTasks.map(task => (
                     <TaskCard
                       key={task.id}
                       task={task}
@@ -149,6 +205,9 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
                     />
                   ))}
                 </AnimatePresence>
+                {filteredTasks.length === 0 && sortedTasks.length > 0 && (
+                  <p className="text-center text-[#444] text-sm py-8">No tasks match the current filters</p>
+                )}
               </div>
             </SortableContext>
 

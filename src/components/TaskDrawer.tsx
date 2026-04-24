@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Trash2, Calendar, User, Link, MessageSquare,
-  ChevronDown, Plus, Send,
+  Plus, Send,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import type { Task, Priority, Status, Comment } from '../types';
 
 interface TaskDrawerProps {
@@ -14,28 +15,27 @@ interface TaskDrawerProps {
   onAddComment: (taskId: string, author: string, body: string) => void;
 }
 
-const priorities: Priority[] = ['low', 'medium', 'high', 'urgent'];
-const statuses: Status[] = ['backlog', 'todo', 'in-progress', 'review', 'done'];
+const priorities: Priority[] = ['low', 'medium', 'high'];
+const statuses: Status[] = ['Nový', 'Pracujem na tom', 'Na kontrole', 'Hotovo'];
+const assignees = ['', 'Dávid', 'Igor', 'Stano'];
 
 const priorityColors: Record<Priority, string> = {
   low: 'text-[#555]',
   medium: 'text-yellow-400',
   high: 'text-orange-400',
-  urgent: 'text-red-400',
 };
 
 const statusColors: Record<Status, string> = {
-  backlog: 'bg-[#222] text-[#888]',
-  todo: 'bg-[#1e3a5f] text-blue-300',
-  'in-progress': 'bg-[#2d1f5e] text-purple-300',
-  review: 'bg-[#3a2d00] text-yellow-300',
-  done: 'bg-[#1a3a2a] text-green-300',
+  'Nový': 'bg-[#1e3a5f] text-blue-300',
+  'Pracujem na tom': 'bg-[#2d1f5e] text-purple-300',
+  'Na kontrole': 'bg-[#3a2d00] text-yellow-300',
+  'Hotovo': 'bg-[#1a3a2a] text-green-300',
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 py-3 border-b border-[#1a1a1a]">
-      <div className="w-24 flex-shrink-0 text-xs text-[#555] pt-0.5">{label}</div>
+      <div className="w-28 flex-shrink-0 text-xs text-[#555] pt-0.5">{label}</div>
       <div className="flex-1">{children}</div>
     </div>
   );
@@ -196,7 +196,10 @@ function CommentThread({
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-xs font-medium text-[#ccc]">{c.author}</span>
               <span className="text-[10px] text-[#444]">
-                {new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {new Date(c.createdAt).toLocaleString('en-US', {
+                  month: 'short', day: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
               </span>
             </div>
             <p className="text-xs text-[#888] leading-relaxed">{c.body}</p>
@@ -205,12 +208,16 @@ function CommentThread({
       ))}
 
       <form onSubmit={submit} className="flex gap-2">
-        <input
+        <select
           value={author}
           onChange={e => setAuthor(e.target.value)}
-          placeholder="Name"
-          className="w-20 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-2 py-2 text-xs text-white placeholder-[#444] outline-none flex-shrink-0"
-        />
+          className="w-24 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-2 py-2 text-xs text-white outline-none flex-shrink-0 [color-scheme:dark]"
+        >
+          <option value="">Name</option>
+          {['Dávid', 'Igor', 'Stano'].map(a => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
         <input
           value={body}
           onChange={e => setBody(e.target.value)}
@@ -231,7 +238,16 @@ function CommentThread({
 
 export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: TaskDrawerProps) {
   function patch<K extends keyof Task>(key: K, value: Task[K]) {
-    if (task) onUpdate(task.id, { [key]: value });
+    if (!task) return;
+    onUpdate(task.id, { [key]: value });
+    if (key === 'status' && value === 'Hotovo') {
+      confetti({
+        particleCount: 160,
+        spread: 90,
+        origin: { y: 0.6 },
+        colors: ['#22c55e', '#86efac', '#4ade80', '#ffffff', '#bbf7d0'],
+      });
+    }
   }
 
   return (
@@ -295,13 +311,13 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                           task.status === s ? statusColors[s] : 'bg-[#1a1a1a] text-[#555] hover:text-[#888]'
                         }`}
                       >
-                        {s.replace('-', ' ')}
+                        {s}
                       </button>
                     ))}
                   </div>
                 </Field>
 
-                <Field label="Priority">
+                <Field label="Business Priority">
                   <div className="flex gap-1">
                     {priorities.map(p => (
                       <button
@@ -322,11 +338,15 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                 <Field label="Assignee">
                   <div className="flex items-center gap-2">
                     <User size={13} className="text-[#555]" />
-                    <InlineEdit
+                    <select
                       value={task.assignee}
-                      onChange={v => patch('assignee', v)}
-                      placeholder="Unassigned"
-                    />
+                      onChange={e => patch('assignee', e.target.value)}
+                      className="bg-transparent text-sm text-[#aaa] outline-none cursor-pointer hover:text-white transition-colors [color-scheme:dark]"
+                    >
+                      {assignees.map(a => (
+                        <option key={a} value={a}>{a || 'Unassigned'}</option>
+                      ))}
+                    </select>
                   </div>
                 </Field>
 
@@ -340,6 +360,16 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                       className="bg-transparent text-sm text-[#aaa] outline-none cursor-pointer hover:text-white transition-colors [color-scheme:dark]"
                     />
                   </div>
+                </Field>
+
+                <Field label="Created">
+                  <span className="text-sm text-[#555]">
+                    {task.createdAt
+                      ? new Date(task.createdAt).toLocaleDateString('en-US', {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                        })
+                      : '—'}
+                  </span>
                 </Field>
 
                 <Field label="Links">

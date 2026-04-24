@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, ChevronRight, MoreHorizontal, Pencil, Trash2, Layers } from 'lucide-react';
+import { Plus, ChevronRight, MoreHorizontal, Pencil, Trash2, Layers, LogOut } from 'lucide-react';
 import type { Pipeline } from '../types';
 
 interface SidebarProps {
@@ -12,6 +12,7 @@ interface SidebarProps {
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  onLogout: () => void;
 }
 
 interface MenuState {
@@ -20,7 +21,7 @@ interface MenuState {
   y: number;
 }
 
-export function Sidebar({ pipelines, activePipelineId, isOpen, onClose, onSelect, onCreate, onRename, onDelete }: SidebarProps) {
+export function Sidebar({ pipelines, activePipelineId, isOpen, onClose, onSelect, onCreate, onRename, onDelete, onLogout }: SidebarProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export function Sidebar({ pipelines, activePipelineId, isOpen, onClose, onSelect
         <div className="px-4 pt-5 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#888] text-xs font-medium uppercase tracking-wider">
             <Layers size={12} />
-            Pipelines
+            Kanospace
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -100,7 +101,7 @@ export function Sidebar({ pipelines, activePipelineId, isOpen, onClose, onSelect
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 pb-4">
+        <nav className="flex-1 overflow-y-auto px-2 pb-2">
           <AnimatePresence>
             {pipelines.map(p => (
               <motion.div
@@ -177,6 +178,17 @@ export function Sidebar({ pipelines, activePipelineId, isOpen, onClose, onSelect
             <p className="text-[#444] text-xs px-2 mt-2">No pipelines yet</p>
           )}
         </nav>
+
+        {/* Logout */}
+        <div className="px-2 pb-4 pt-2 border-t border-[#1e1e1e]">
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-[#555] hover:text-red-400 hover:bg-[#1a1a1a] transition-all"
+          >
+            <LogOut size={13} />
+            Logout
+          </button>
+        </div>
       </aside>
 
       <AnimatePresence>

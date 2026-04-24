@@ -1,5 +1,5 @@
-export type Priority = 'low' | 'medium' | 'high' | 'urgent';
-export type Status = 'backlog' | 'todo' | 'in-progress' | 'review' | 'done';
+export type Priority = 'low' | 'medium' | 'high';
+export type Status = 'Nový' | 'Pracujem na tom' | 'Na kontrole' | 'Hotovo';
 
 export interface Comment {
   id: string;

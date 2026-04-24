@@ -144,7 +144,7 @@ export function useAppStore() {
     const orderIndex = pipeline.tasks.reduce((m, t) => Math.max(m, t.order), -1) + 1;
 
     const task: Task = {
-      id, title, description: '', status: 'todo', priority: 'medium',
+      id, title, description: '', status: 'Nový', priority: 'medium',
       assignee: '', deadline: '', assetLinks: [], comments: [],
       createdAt, order: orderIndex,
     };
@@ -158,7 +158,7 @@ export function useAppStore() {
 
     await supabase.from('tasks').insert({
       id, pipeline_id: pipelineId, title, description: '',
-      status: 'todo', priority: 'medium', assignee: '', deadline: '',
+      status: 'Nový', priority: 'medium', assignee: '', deadline: '',
       asset_links: [], order_index: orderIndex,
     });
   }, [state.pipelines]);
