@@ -40,8 +40,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     opacity: isDragging ? 0 : 1,
   };
 
-  const priority = priorityConfig[task.priority];
-  const status = statusConfig[task.status];
+  const priority = priorityConfig[task.priority] ?? priorityConfig.medium;
+  const status = statusConfig[task.status] ?? { color: 'bg-[#333] text-[#888]', label: task.status };
   const PriorityIcon = priority.icon;
 
   const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== 'Hotovo';
@@ -113,7 +113,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
 }
 
 export function TaskCardOverlay({ task }: { task: Task }) {
-  const priority = priorityConfig[task.priority];
+  const priority = priorityConfig[task.priority] ?? priorityConfig.medium;
   const PriorityIcon = priority.icon;
 
   return (

@@ -12,6 +12,27 @@ type DbTask = {
 };
 type DbComment = { id: string; task_id: string; author: string; body: string; created_at: string };
 
+const STATUS_MAP: Record<string, Status> = {
+  backlog: 'Nový', todo: 'Nový',
+  'in-progress': 'Pracujem na tom',
+  review: 'Na kontrole',
+  done: 'Hotovo',
+};
+const VALID_STATUSES = new Set<string>(['Nový', 'Pracujem na tom', 'Na kontrole', 'Hotovo']);
+
+const PRIORITY_MAP: Record<string, Priority> = { urgent: 'high' };
+const VALID_PRIORITIES = new Set<string>(['low', 'medium', 'high']);
+
+function toStatus(s: string): Status {
+  if (VALID_STATUSES.has(s)) return s as Status;
+  return STATUS_MAP[s] ?? 'Nový';
+}
+
+function toPriority(p: string): Priority {
+  if (VALID_PRIORITIES.has(p)) return p as Priority;
+  return PRIORITY_MAP[p] ?? 'medium';
+}
+
 function buildPipelines(
   dbPipelines: DbPipeline[],
   dbTasks: DbTask[],
@@ -29,7 +50,7 @@ function buildPipelines(
     const arr = tasksByPipeline.get(t.pipeline_id) ?? [];
     arr.push({
       id: t.id, title: t.title, description: t.description,
-      status: t.status as Status, priority: t.priority as Priority,
+      status: toStatus(t.status), priority: toPriority(t.priority),
       order: t.order_index, assignee: t.assignee, deadline: t.deadline,
       assetLinks: t.asset_links, createdAt: t.created_at,
       comments: commentsByTask.get(t.id) ?? [],
