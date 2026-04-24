@@ -11,6 +11,8 @@ html, body, #root {
   font-family: 'Inter', sans-serif;
   background-color: #0f0f0f;
   color: #e2e8f0;
+  /* Prevent pull-to-refresh and bounce-scroll reloads in mobile browsers */
+  overscroll-behavior: none;
 }
 
 ::-webkit-scrollbar {
@@ -46,19 +48,29 @@ html, body, #root {
   animation: fire-glow 2s ease-in-out infinite;
 }
 
-/* Applied to the <body> during an active drag session */
+/* Applied to <body> during an active drag session */
 body.is-dragging,
 body.is-dragging * {
   user-select: none !important;
   -webkit-user-select: none !important;
   cursor: grabbing !important;
 }
+body.is-dragging {
+  overflow: hidden;
+  touch-action: none;
+}
 
-/* Draggable task card wrapper — suppress browser long-press behaviour */
+/*
+ * Draggable task card wrapper.
+ * touch-action: none is intentional — it surrenders scroll ownership to the
+ * browser on non-card areas (margins, gaps) while giving dnd-kit exclusive
+ * control over touch events that land on a card. Without this, the browser
+ * claims the touch for scrolling before the 250 ms drag delay expires.
+ */
 .task-draggable {
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
-  -webkit-touch-callout: none;   /* iOS: suppress copy/paste callout */
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;    /* disables double-tap zoom; keeps panning */
 }

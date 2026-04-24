@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -38,6 +38,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const dragConstraint = { delay: 250, tolerance: 5 };
   const sensors = useSensors(
@@ -59,8 +60,18 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
 
   function handleDragStart(event: { active: { id: string | number } }) {
     setActiveId(String(event.active.id));
+
+    // Lock scroll — body class handles CSS cursor/select, inline styles handle
+    // overflow. iOS ignores overflow:hidden on body, so we also lock the actual
+    // scroll container directly.
     document.body.classList.add('is-dragging');
-    // Haptic pulse on drag activation (supported on Android; no-op elsewhere)
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    if (scrollRef.current) {
+      scrollRef.current.style.overflow = 'hidden';
+      scrollRef.current.style.touchAction = 'none';
+    }
+
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate(30);
     }
@@ -69,6 +80,12 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
   function cleanupDrag() {
     setActiveId(null);
     document.body.classList.remove('is-dragging');
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+    if (scrollRef.current) {
+      scrollRef.current.style.overflow = '';
+      scrollRef.current.style.touchAction = '';
+    }
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -96,7 +113,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
   }
 
   return (
-    <div className="flex-1 h-full overflow-y-auto">
+    <div ref={scrollRef} className="flex-1 h-full overflow-y-auto">
       <div className="max-w-[800px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-5">
