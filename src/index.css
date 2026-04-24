@@ -45,3 +45,20 @@ html, body, #root {
 .on-fire {
   animation: fire-glow 2s ease-in-out infinite;
 }
+
+/* Applied to the <body> during an active drag session */
+body.is-dragging,
+body.is-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: grabbing !important;
+}
+
+/* Draggable task card wrapper — suppress browser long-press behaviour */
+.task-draggable {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;   /* iOS: suppress copy/paste callout */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;    /* disables double-tap zoom; keeps panning */
+}

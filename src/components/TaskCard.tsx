@@ -49,7 +49,19 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     (Date.now() - new Date(task.createdAt).getTime()) > TWO_DAYS_MS;
 
   return (
-    <div ref={setNodeRef} style={style}>
+    /*
+     * Listeners live on the outermost div so the whole card surface is the
+     * drag handle — essential for mobile where there's no hover state to
+     * reveal the grip icon. The .task-draggable class suppresses browser
+     * long-press text-selection and tap highlight.
+     */
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="task-draggable"
+      {...attributes}
+      {...listeners}
+    >
       <motion.div
         layout
         initial={{ opacity: 0, y: 8 }}
@@ -60,14 +72,10 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         className={`group relative bg-[#141414] border border-[#1e1e1e] hover:border-[#2a2a2a] rounded-xl p-4 cursor-pointer transition-all hover:bg-[#161616]${isOnFire ? ' on-fire' : ''}`}
       >
         <div className="flex items-start gap-3">
-          <button
-            {...attributes}
-            {...listeners}
-            onClick={e => e.stopPropagation()}
-            className="mt-0.5 text-[#333] hover:text-[#666] cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-          >
+          {/* Grip — always visible on mobile (touch devices have no hover) */}
+          <div className="mt-0.5 text-[#444] md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 cursor-grab">
             <GripVertical size={14} />
-          </button>
+          </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-3 mb-2">
@@ -117,7 +125,7 @@ export function TaskCardOverlay({ task }: { task: Task }) {
   const PriorityIcon = priority.icon;
 
   return (
-    <div className="bg-[#141414] border border-[#333] rounded-xl p-4 shadow-2xl rotate-1 w-full">
+    <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 shadow-2xl w-full">
       <div className="flex items-start gap-3">
         <GripVertical size={14} className="mt-0.5 text-[#555] flex-shrink-0" />
         <div className="flex-1 min-w-0">

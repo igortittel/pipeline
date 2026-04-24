@@ -3,6 +3,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragOverlay,
@@ -38,8 +39,10 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
   const [filterPriority, setFilterPriority] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
 
+  const dragConstraint = { delay: 250, tolerance: 5 };
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: dragConstraint }),
+    useSensor(TouchSensor,   { activationConstraint: dragConstraint }),
   );
 
   const sortedTasks = [...pipeline.tasks].sort((a, b) => a.order - b.order);
@@ -56,16 +59,30 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
 
   function handleDragStart(event: { active: { id: string | number } }) {
     setActiveId(String(event.active.id));
+    document.body.classList.add('is-dragging');
+    // Haptic pulse on drag activation (supported on Android; no-op elsewhere)
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(30);
+    }
+  }
+
+  function cleanupDrag() {
+    setActiveId(null);
+    document.body.classList.remove('is-dragging');
   }
 
   function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null);
+    cleanupDrag();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = sortedTasks.findIndex(t => t.id === active.id);
     const newIndex = sortedTasks.findIndex(t => t.id === over.id);
     const reordered = arrayMove(sortedTasks, oldIndex, newIndex);
     onReorder(reordered.map(t => t.id));
+  }
+
+  function handleDragCancel() {
+    cleanupDrag();
   }
 
   function handleCreate(e: React.FormEvent) {
@@ -193,6 +210,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
             collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           >
             <SortableContext items={sortedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
@@ -212,7 +230,15 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
             </SortableContext>
 
             <DragOverlay>
-              {activeTask && <TaskCardOverlay task={activeTask} />}
+              {activeTask && (
+                <motion.div
+                  initial={{ scale: 1, rotate: 0 }}
+                  animate={{ scale: 1.04, rotate: 1 }}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                >
+                  <TaskCardOverlay task={activeTask} />
+                </motion.div>
+              )}
             </DragOverlay>
           </DndContext>
         )}
