@@ -50,17 +50,15 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
 
   return (
     /*
-     * Listeners live on the outermost div so the whole card surface is the
-     * drag handle — essential for mobile where there's no hover state to
-     * reveal the grip icon. The .task-draggable class suppresses browser
-     * long-press text-selection and tap highlight.
+     * Outer div: positioning + transform only. {attributes} stays here for
+     * keyboard-accessibility (aria roles). NO listeners here — if listeners
+     * covered the whole card, touch-action:none would block scrolling.
      */
     <div
       ref={setNodeRef}
       style={style}
       className="task-draggable"
       {...attributes}
-      {...listeners}
     >
       <motion.div
         layout
@@ -72,8 +70,17 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         className={`group relative bg-[#141414] border border-[#1e1e1e] hover:border-[#2a2a2a] rounded-xl p-4 cursor-pointer transition-all hover:bg-[#161616]${isOnFire ? ' on-fire' : ''}`}
       >
         <div className="flex items-start gap-3">
-          {/* Grip — always visible on mobile (touch devices have no hover) */}
-          <div className="mt-0.5 text-[#444] md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 cursor-grab">
+          {/*
+           * Grip handle: the ONLY element with listeners + touch-action:none.
+           * drag-handle CSS class applies touch-action:none so the browser
+           * gives dnd-kit exclusive control over touches here. The -m-1 p-3
+           * gives a 44px-ish touch target without changing visual size.
+           */}
+          <div
+            {...listeners}
+            className="drag-handle flex-shrink-0 flex items-center self-stretch pr-2 text-[#444] hover:text-[#888] md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+            onClick={e => e.stopPropagation()}
+          >
             <GripVertical size={14} />
           </div>
 

@@ -60,17 +60,22 @@ body.is-dragging {
   touch-action: none;
 }
 
-/*
- * Draggable task card wrapper.
- * touch-action: none is intentional — it surrenders scroll ownership to the
- * browser on non-card areas (margins, gaps) while giving dnd-kit exclusive
- * control over touch events that land on a card. Without this, the browser
- * claims the touch for scrolling before the 250 ms drag delay expires.
- */
+/* Task card wrapper — no touch-action override so the list scrolls freely */
 .task-draggable {
-  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * The drag handle is the ONLY element with touch-action:none.
+ * This tells the browser to hand touch events on the handle exclusively to JS
+ * (enabling dnd-kit's 250ms press-to-drag), while everywhere else on the card
+ * the browser still owns the touch for normal scrolling.
+ */
+.drag-handle {
+  touch-action: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
