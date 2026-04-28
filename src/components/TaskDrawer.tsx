@@ -2,10 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Trash2, Calendar, User, Link, MessageSquare,
-  Plus, Send,
+  Plus, Send, Paperclip, Download, File as FileIcon,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import type { Task, Priority, Status, Comment } from '../types';
+import type { Task, Priority, Status, Comment, TaskFile } from '../types';
 
 interface TaskDrawerProps {
   task: Task | null;
@@ -13,6 +13,8 @@ interface TaskDrawerProps {
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
   onAddComment: (taskId: string, author: string, body: string) => void;
+  onUploadFile: (taskId: string, file: File) => Promise<void>;
+  onDeleteFile: (taskId: string, fileId: string, fileUrl: string) => Promise<void>;
 }
 
 const priorities: Priority[] = ['low', 'medium', 'high'];
@@ -32,6 +34,12 @@ const statusColors: Record<Status, string> = {
   'Hotovo': 'bg-[#1a3a2a] text-green-300',
 };
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function Field({ label, labelFor, children }: { label: string; labelFor?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 py-3 border-b border-[#1a1a1a]">
@@ -47,17 +55,10 @@ function Field({ label, labelFor, children }: { label: string; labelFor?: string
 }
 
 function InlineEdit({
-  value,
-  onChange,
-  placeholder,
-  multiline,
-  className,
+  value, onChange, placeholder, multiline, className,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
-  className?: string;
+  value: string; onChange: (v: string) => void;
+  placeholder?: string; multiline?: boolean; className?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState(value);
@@ -132,53 +133,82 @@ function AssetLinks({ links, onChange }: { links: string[]; onChange: (l: string
       {links.map((link, i) => (
         <div key={i} className="flex items-center gap-2 group">
           <Link size={12} className="text-[#555] flex-shrink-0" />
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
+          <a href={link} target="_blank" rel="noopener noreferrer"
             className="text-xs text-blue-400 hover:text-blue-300 truncate flex-1 transition-colors"
-            onClick={e => e.stopPropagation()}
-          >
-            {link}
-          </a>
-          <button
-            onClick={() => onChange(links.filter((_, j) => j !== i))}
-            className="opacity-0 group-hover:opacity-100 text-[#555] hover:text-red-400 transition-all"
-          >
+            onClick={e => e.stopPropagation()}>{link}</a>
+          <button onClick={() => onChange(links.filter((_, j) => j !== i))}
+            className="opacity-0 group-hover:opacity-100 text-[#555] hover:text-red-400 transition-all">
             <X size={12} />
           </button>
         </div>
       ))}
       {adding ? (
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={e => setValue(e.target.value)}
+        <input ref={inputRef} value={value} onChange={e => setValue(e.target.value)}
           onBlur={add}
           onKeyDown={e => { if (e.key === 'Enter') add(); if (e.key === 'Escape') { setAdding(false); setValue(''); } }}
           placeholder="Paste URL..."
-          className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#444] outline-none"
-        />
+          className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#444] outline-none" />
       ) : (
-        <button
-          onClick={() => setAdding(true)}
-          className="flex items-center gap-1 text-xs text-[#444] hover:text-[#888] transition-colors"
-        >
-          <Plus size={12} />
-          Add link
+        <button onClick={() => setAdding(true)} className="flex items-center gap-1 text-xs text-[#444] hover:text-[#888] transition-colors">
+          <Plus size={12} />Add link
         </button>
       )}
     </div>
   );
 }
 
-function CommentThread({
-  comments,
-  onAdd,
+function FileAttachments({
+  taskId, files, onUpload, onDelete,
 }: {
-  comments: Comment[];
-  onAdd: (author: string, body: string) => void;
+  taskId: string;
+  files: TaskFile[];
+  onUpload: (taskId: string, file: File) => Promise<void>;
+  onDelete: (taskId: string, fileId: string, fileUrl: string) => Promise<void>;
 }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await onUpload(taskId, file);
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {files.map(f => (
+        <div key={f.id} className="flex items-center gap-2 group">
+          <FileIcon size={12} className="text-[#555] flex-shrink-0" />
+          <span className="text-xs text-[#aaa] truncate flex-1">{f.name}</span>
+          <span className="text-[10px] text-[#444] flex-shrink-0">{formatBytes(f.size)}</span>
+          <a href={f.url} target="_blank" rel="noopener noreferrer"
+            className="opacity-0 group-hover:opacity-100 text-[#555] hover:text-blue-400 transition-all"
+            onClick={e => e.stopPropagation()}>
+            <Download size={12} />
+          </a>
+          <button onClick={() => onDelete(taskId, f.id, f.url)}
+            className="opacity-0 group-hover:opacity-100 text-[#555] hover:text-red-400 transition-all">
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      <input ref={inputRef} type="file" onChange={handleFiles} className="hidden" id="file-upload" />
+      <label htmlFor="file-upload"
+        className={`flex items-center gap-1 text-xs transition-colors cursor-pointer ${uploading ? 'text-[#444] pointer-events-none' : 'text-[#444] hover:text-[#888]'}`}>
+        <Paperclip size={12} />
+        {uploading ? 'Nahrávam…' : 'Priložiť súbor'}
+      </label>
+    </div>
+  );
+}
+
+function CommentThread({ comments, onAdd }: { comments: Comment[]; onAdd: (author: string, body: string) => void }) {
   const [author, setAuthor] = useState('');
   const [body, setBody] = useState('');
 
@@ -201,10 +231,7 @@ function CommentThread({
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-xs font-medium text-[#ccc]">{c.author}</span>
               <span className="text-[10px] text-[#444]">
-                {new Date(c.createdAt).toLocaleString('en-US', {
-                  month: 'short', day: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
+                {new Date(c.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </span>
             </div>
             <p className="text-xs text-[#888] leading-relaxed">{c.body}</p>
@@ -213,27 +240,15 @@ function CommentThread({
       ))}
 
       <form onSubmit={submit} className="flex gap-2">
-        <select
-          value={author}
-          onChange={e => setAuthor(e.target.value)}
-          className="w-24 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-2 py-2 text-xs text-white outline-none flex-shrink-0 [color-scheme:dark]"
-        >
+        <select value={author} onChange={e => setAuthor(e.target.value)}
+          className="w-24 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-2 py-2 text-xs text-white outline-none flex-shrink-0 [color-scheme:dark]">
           <option value="">Name</option>
-          {['Dávid', 'Igor', 'Stano'].map(a => (
-            <option key={a} value={a}>{a}</option>
-          ))}
+          {['Dávid', 'Igor', 'Stano'].map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input
-          value={body}
-          onChange={e => setBody(e.target.value)}
-          placeholder="Add a comment..."
-          className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-white placeholder-[#444] outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!body.trim()}
-          className="text-[#555] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors p-2"
-        >
+        <input value={body} onChange={e => setBody(e.target.value)} placeholder="Add a comment..."
+          className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-white placeholder-[#444] outline-none" />
+        <button type="submit" disabled={!body.trim()}
+          className="text-[#555] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors p-2">
           <Send size={14} />
         </button>
       </form>
@@ -241,17 +256,12 @@ function CommentThread({
   );
 }
 
-export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: TaskDrawerProps) {
+export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment, onUploadFile, onDeleteFile }: TaskDrawerProps) {
   function patch<K extends keyof Task>(key: K, value: Task[K]) {
     if (!task) return;
     onUpdate(task.id, { [key]: value });
     if (key === 'status' && value === 'Hotovo') {
-      confetti({
-        particleCount: 160,
-        spread: 90,
-        origin: { y: 0.6 },
-        colors: ['#22c55e', '#86efac', '#4ade80', '#ffffff', '#bbf7d0'],
-      });
+      confetti({ particleCount: 160, spread: 90, origin: { y: 0.6 }, colors: ['#22c55e', '#86efac', '#4ade80', '#ffffff', '#bbf7d0'] });
     }
   }
 
@@ -259,63 +269,34 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
     <AnimatePresence>
       {task && (
         <>
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/40 z-40"
-          />
-          <motion.div
-            key="drawer"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+          <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }} onClick={onClose} className="fixed inset-0 bg-black/40 z-40" />
+          <motion.div key="drawer" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] bg-[#111] border-l border-[#1e1e1e] z-50 flex flex-col overflow-hidden"
-          >
+            className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] bg-[#111] border-l border-[#1e1e1e] z-50 flex flex-col overflow-hidden">
+
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#1a1a1a]">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => { onDelete(task.id); onClose(); }}
-                  className="text-[#444] hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-              <button
-                onClick={onClose}
-                className="text-[#444] hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]"
-              >
+              <button onClick={() => { onDelete(task.id); onClose(); }}
+                className="text-[#444] hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]">
+                <Trash2 size={14} />
+              </button>
+              <button onClick={onClose} className="text-[#444] hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]">
                 <X size={16} />
               </button>
             </div>
 
-            {/* Scrollable content */}
+            {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              {/* Title */}
-              <InlineEdit
-                value={task.title}
-                onChange={v => patch('title', v)}
-                placeholder="Task title"
-                className="text-xl font-semibold text-white mb-4 w-full"
-              />
+              <InlineEdit value={task.title} onChange={v => patch('title', v)}
+                placeholder="Task title" className="text-xl font-semibold text-white mb-4 w-full" />
 
-              {/* Fields */}
               <div className="mb-6">
                 <Field label="Status">
                   <div className="flex flex-wrap gap-1">
                     {statuses.map(s => (
-                      <button
-                        key={s}
-                        onClick={() => patch('status', s)}
-                        className={`text-[10px] font-medium px-2 py-0.5 rounded-full transition-all ${
-                          task.status === s ? statusColors[s] : 'bg-[#1a1a1a] text-[#555] hover:text-[#888]'
-                        }`}
-                      >
+                      <button key={s} onClick={() => patch('status', s)}
+                        className={`text-[10px] font-medium px-2 py-0.5 rounded-full transition-all ${task.status === s ? statusColors[s] : 'bg-[#1a1a1a] text-[#555] hover:text-[#888]'}`}>
                         {s}
                       </button>
                     ))}
@@ -325,15 +306,8 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                 <Field label="Business Priority">
                   <div className="flex gap-1">
                     {priorities.map(p => (
-                      <button
-                        key={p}
-                        onClick={() => patch('priority', p)}
-                        className={`text-xs px-2 py-0.5 rounded-lg capitalize transition-all ${
-                          task.priority === p
-                            ? `${priorityColors[p]} bg-[#1e1e1e]`
-                            : 'text-[#444] hover:text-[#888] hover:bg-[#1a1a1a]'
-                        }`}
-                      >
+                      <button key={p} onClick={() => patch('priority', p)}
+                        className={`text-xs px-2 py-0.5 rounded-lg capitalize transition-all ${task.priority === p ? `${priorityColors[p]} bg-[#1e1e1e]` : 'text-[#444] hover:text-[#888] hover:bg-[#1a1a1a]'}`}>
                         {p}
                       </button>
                     ))}
@@ -343,14 +317,9 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                 <Field label="Assignee">
                   <div className="flex items-center gap-2">
                     <User size={13} className="text-[#555]" />
-                    <select
-                      value={task.assignee}
-                      onChange={e => patch('assignee', e.target.value)}
-                      className="bg-transparent text-sm text-[#aaa] outline-none cursor-pointer hover:text-white transition-colors [color-scheme:dark]"
-                    >
-                      {assignees.map(a => (
-                        <option key={a} value={a}>{a || 'Unassigned'}</option>
-                      ))}
+                    <select value={task.assignee} onChange={e => patch('assignee', e.target.value)}
+                      className="bg-transparent text-sm text-[#aaa] outline-none cursor-pointer hover:text-white transition-colors [color-scheme:dark]">
+                      {assignees.map(a => <option key={a} value={a}>{a || 'Unassigned'}</option>)}
                     </select>
                   </div>
                 </Field>
@@ -358,64 +327,47 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment }: 
                 <Field label="Deadline" labelFor="task-deadline">
                   <div className="flex items-center gap-2">
                     <Calendar size={13} className="text-[#555] flex-shrink-0" />
-                    <input
-                      id="task-deadline"
-                      type="date"
-                      value={task.deadline}
+                    <input id="task-deadline" type="date" value={task.deadline}
                       onChange={e => patch('deadline', e.target.value)}
-                      className={[
-                        'flex-1 min-w-0 min-h-[44px]',
-                        'bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3',
-                        'text-sm outline-none cursor-pointer',
-                        'transition-colors hover:border-[#3a3a3a]',
-                        '[color-scheme:dark]',
-                        // appearance:none removes browser chrome but keeps native picker
-                        '[appearance:none]',
-                        task.deadline ? 'text-[#aaa]' : 'text-[#555]',
-                      ].join(' ')}
-                    />
+                      className={['flex-1 min-w-0 min-h-[44px]', 'bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3',
+                        'text-sm outline-none cursor-pointer transition-colors hover:border-[#3a3a3a]',
+                        '[color-scheme:dark] [appearance:none]',
+                        task.deadline ? 'text-[#aaa]' : 'text-[#555]'].join(' ')} />
                   </div>
                 </Field>
 
                 <Field label="Created">
                   <span className="text-sm text-[#555]">
-                    {task.createdAt
-                      ? new Date(task.createdAt).toLocaleDateString('en-US', {
-                          year: 'numeric', month: 'short', day: 'numeric',
-                        })
-                      : '—'}
+                    {task.createdAt ? new Date(task.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                   </span>
                 </Field>
 
                 <Field label="Links">
-                  <AssetLinks
-                    links={task.assetLinks}
-                    onChange={v => patch('assetLinks', v)}
+                  <AssetLinks links={task.assetLinks} onChange={v => patch('assetLinks', v)} />
+                </Field>
+
+                <Field label="Súbory">
+                  <FileAttachments
+                    taskId={task.id}
+                    files={task.files}
+                    onUpload={onUploadFile}
+                    onDelete={onDeleteFile}
                   />
                 </Field>
               </div>
 
-              {/* Description */}
               <div className="mb-6">
                 <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3">Description</h4>
-                <InlineEdit
-                  value={task.description}
-                  onChange={v => patch('description', v)}
-                  placeholder="Add a description..."
-                  multiline
-                />
+                <InlineEdit value={task.description} onChange={v => patch('description', v)}
+                  placeholder="Add a description..." multiline />
               </div>
 
-              {/* Comments */}
               <div>
                 <h4 className="text-xs text-[#555] uppercase tracking-wider mb-3 flex items-center gap-2">
                   <MessageSquare size={12} />
                   Comments {task.comments.length > 0 && `(${task.comments.length})`}
                 </h4>
-                <CommentThread
-                  comments={task.comments}
-                  onAdd={(author, body) => onAddComment(task.id, author, body)}
-                />
+                <CommentThread comments={task.comments} onAdd={(author, body) => onAddComment(task.id, author, body)} />
               </div>
             </div>
           </motion.div>

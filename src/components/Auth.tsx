@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 
 export const PASSWORD_KEY = 'pp-auth';
+const AUTH_TIME_KEY = 'pp-auth-time';
 const CORRECT = 'pipeline2024';
+const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface AuthProps {
   onAuthenticated: () => void;
@@ -17,6 +19,7 @@ export function Auth({ onAuthenticated }: AuthProps) {
     e.preventDefault();
     if (value === CORRECT) {
       localStorage.setItem(PASSWORD_KEY, 'true');
+      localStorage.setItem(AUTH_TIME_KEY, Date.now().toString());
       onAuthenticated();
     } else {
       setError(true);
@@ -77,5 +80,12 @@ export function Auth({ onAuthenticated }: AuthProps) {
 
 export function useAuth() {
   const stored = localStorage.getItem(PASSWORD_KEY);
-  return stored === 'true';
+  if (stored !== 'true') return false;
+  const storedTime = localStorage.getItem(AUTH_TIME_KEY);
+  if (!storedTime || Date.now() - parseInt(storedTime, 10) > MAX_AGE_MS) {
+    localStorage.removeItem(PASSWORD_KEY);
+    localStorage.removeItem(AUTH_TIME_KEY);
+    return false;
+  }
+  return true;
 }

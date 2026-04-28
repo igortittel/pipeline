@@ -8,6 +8,14 @@ export interface Comment {
   createdAt: string;
 }
 
+export interface TaskFile {
+  id: string;
+  name: string;
+  url: string;
+  size: number;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -18,7 +26,10 @@ export interface Task {
   deadline: string;
   assetLinks: string[];
   comments: Comment[];
+  files: TaskFile[];
   createdAt: string;
+  completedAt: string;
+  archived: boolean;
   order: number;
 }
 
@@ -32,4 +43,15 @@ export interface Pipeline {
 export interface AppState {
   pipelines: Pipeline[];
   activePipelineId: string | null;
+}
+
+export interface Notification {
+  id: string;
+  type: 'status' | 'comment' | 'deadline';
+  taskId: string;
+  taskTitle: string;
+  pipelineId: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
 }
