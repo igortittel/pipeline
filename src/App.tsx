@@ -145,6 +145,13 @@ export default function App() {
     if (task) setSelectedTask(task);
   }
 
+  // Auto-dismiss Supabase write errors after 6s
+  useEffect(() => {
+    if (!store.lastError) return;
+    const t = setTimeout(store.clearError, 6000);
+    return () => clearTimeout(t);
+  }, [store.lastError, store.clearError]);
+
   if (!authenticated) {
     return <Auth onAuthenticated={handleAuthenticated} />;
   }
@@ -221,6 +228,28 @@ export default function App() {
 
       <AnimatePresence>
         {greeting && <GreetingOverlay message={greeting} onDismiss={() => setGreeting(null)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {store.lastError && (
+          <motion.div
+            key="error-toast"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[300] flex items-center gap-3 bg-[#1a0a0a] border border-red-900/60 text-red-300 text-xs px-4 py-3 rounded-xl shadow-xl max-w-sm w-[calc(100vw-2rem)]"
+          >
+            <span className="flex-1 leading-relaxed">{store.lastError}</span>
+            <button
+              onClick={store.clearError}
+              className="text-red-500 hover:text-red-300 transition-colors flex-shrink-0"
+              aria-label="Zavrieť"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
       </AnimatePresence>
     </>
   );

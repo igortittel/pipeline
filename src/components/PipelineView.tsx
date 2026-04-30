@@ -35,10 +35,11 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
   const [filterAssignee, setFilterAssignee] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const dragConstraint = { delay: 250, tolerance: 5 };
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: dragConstraint }),
-    useSensor(TouchSensor, { activationConstraint: dragConstraint }),
+    // Desktop: start drag after moving 8px (no delay — natural for mouse)
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    // Mobile: hold 250ms to distinguish from scroll
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   );
 
   const sortedTasks = [...pipeline.tasks].sort((a, b) => a.order - b.order);
@@ -89,9 +90,11 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
     cleanupDrag();
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = sortedTasks.findIndex(t => t.id === active.id);
-    const newIndex = sortedTasks.findIndex(t => t.id === over.id);
-    const reordered = arrayMove(sortedTasks, oldIndex, newIndex);
+    // Use filteredTasks (visible only) — sortedTasks includes archived which are not in DOM
+    const oldIndex = filteredTasks.findIndex(t => t.id === active.id);
+    const newIndex = filteredTasks.findIndex(t => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(filteredTasks, oldIndex, newIndex);
     onReorder(reordered.map(t => t.id));
   }
 
@@ -184,7 +187,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter}
             onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={cleanupDrag}>
-            <SortableContext items={sortedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={filteredTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
                 <AnimatePresence>
                   {filteredTasks.map(task => (
