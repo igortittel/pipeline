@@ -3,17 +3,35 @@ import { supabase } from './lib/supabase';
 import type { AppState, Pipeline, Task, TaskFile, Comment, Priority, Status } from './types';
 
 const ACTIVE_KEY = 'pp-active-pipeline';
+const ARCHIVED_KEY = 'pp-archived-v1';   // localStorage – DB nemá stĺpec archived (zatiaľ)
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
+// ─── Local archive helpers (fallback kým DB nemá stĺpec archived) ───────────
+function getLocalArchived(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(ARCHIVED_KEY) ?? '[]')); }
+  catch { return new Set(); }
+}
+function setLocalArchived(ids: Set<string>) {
+  localStorage.setItem(ARCHIVED_KEY, JSON.stringify([...ids]));
+}
+function toggleLocalArchived(taskId: string, archived: boolean) {
+  const ids = getLocalArchived();
+  if (archived) ids.add(taskId); else ids.delete(taskId);
+  setLocalArchived(ids);
+}
+
+// ─── DB row types ─────────────────────────────────────────────────────────────
 type DbPipeline = { id: string; name: string; created_at: string };
 type DbTask = {
   id: string; pipeline_id: string; title: string; description: string;
   status: string; priority: string; order_index: number; assignee: string;
   deadline: string; asset_links: string[]; created_at: string;
-  completed_at: string | null; archived: boolean;
+  // completed_at and archived may not exist in DB yet – treated as optional
+  completed_at?: string | null;
+  archived?: boolean;
 };
 type DbComment = { id: string; task_id: string; author: string; body: string; created_at: string };
-type DbFile = { id: string; task_id: string; name: string; url: string; size: number; created_at: string };
+type DbFile   = { id: string; task_id: string; name: string; url: string; size: number; created_at: string };
 
 const STATUS_MAP: Record<string, Status> = {
   backlog: 'Nový', todo: 'Nový',
@@ -21,8 +39,8 @@ const STATUS_MAP: Record<string, Status> = {
   review: 'Na kontrole',
   done: 'Hotovo',
 };
-const VALID_STATUSES = new Set<string>(['Nový', 'Pracujem na tom', 'Na kontrole', 'Hotovo']);
-const PRIORITY_MAP: Record<string, Priority> = { urgent: 'high' };
+const VALID_STATUSES  = new Set<string>(['Nový', 'Pracujem na tom', 'Na kontrole', 'Hotovo']);
+const PRIORITY_MAP    = { urgent: 'high' } as Record<string, Priority>;
 const VALID_PRIORITIES = new Set<string>(['low', 'medium', 'high']);
 
 function toStatus(s: string): Status {
@@ -40,6 +58,8 @@ function buildPipelines(
   dbComments: DbComment[],
   dbFiles: DbFile[],
 ): Pipeline[] {
+  const localArchived = getLocalArchived();
+
   const commentsByTask = new Map<string, Comment[]>();
   for (const c of dbComments) {
     const arr = commentsByTask.get(c.task_id) ?? [];
@@ -57,13 +77,15 @@ function buildPipelines(
   const tasksByPipeline = new Map<string, Task[]>();
   for (const t of dbTasks) {
     const arr = tasksByPipeline.get(t.pipeline_id) ?? [];
+    // archived: use DB value if it exists, otherwise fall back to localStorage
+    const dbArchived = t.archived ?? false;
     arr.push({
       id: t.id, title: t.title, description: t.description,
       status: toStatus(t.status), priority: toPriority(t.priority),
       order: t.order_index, assignee: t.assignee, deadline: t.deadline,
       assetLinks: t.asset_links ?? [], createdAt: t.created_at,
       completedAt: t.completed_at ?? '',
-      archived: t.archived ?? false,
+      archived: dbArchived || localArchived.has(t.id),
       comments: commentsByTask.get(t.id) ?? [],
       files: filesByTask.get(t.id) ?? [],
     });
@@ -81,10 +103,11 @@ export function useAppStore() {
     pipelines: [],
     activePipelineId: localStorage.getItem(ACTIVE_KEY),
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]     = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── fetchAll ──────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     const [
       { data: dbPipelines },
@@ -95,12 +118,13 @@ export function useAppStore() {
       supabase.from('pipelines').select('*').order('created_at'),
       supabase.from('tasks').select('*').order('order_index'),
       supabase.from('comments').select('*').order('created_at'),
+      // task_files table may not exist – ignore error
       supabase.from('task_files').select('*').order('created_at'),
     ]);
 
     const tasks = (dbTasks as DbTask[]) ?? [];
 
-    // Auto-archive tasks that have been Hotovo for > 3 days
+    // Auto-archive Hotovo tasks older than 3 days — only if completed_at column exists
     const now = Date.now();
     const toAutoArchive = tasks.filter(t =>
       t.status === 'Hotovo' && !t.archived &&
@@ -110,7 +134,10 @@ export function useAppStore() {
       await Promise.all(toAutoArchive.map(t =>
         supabase.from('tasks').update({ archived: true }).eq('id', t.id)
       ));
-      for (const t of toAutoArchive) t.archived = true;
+      for (const t of toAutoArchive) {
+        t.archived = true;
+        toggleLocalArchived(t.id, true);
+      }
     }
 
     const pipelines = buildPipelines(
@@ -122,9 +149,7 @@ export function useAppStore() {
 
     setState(prev => {
       const activeStillExists = pipelines.some(p => p.id === prev.activePipelineId);
-      const activePipelineId = activeStillExists
-        ? prev.activePipelineId
-        : (pipelines[0]?.id ?? null);
+      const activePipelineId  = activeStillExists ? prev.activePipelineId : (pipelines[0]?.id ?? null);
       return { pipelines, activePipelineId };
     });
   }, []);
@@ -134,33 +159,32 @@ export function useAppStore() {
     fetchTimerRef.current = setTimeout(fetchAll, 150);
   }, [fetchAll]);
 
-  // Awaits a Supabase write, surfaces errors and reverts optimistic update via re-fetch.
-  // Accepts PromiseLike so PostgrestFilterBuilder (thenable, not full Promise) works directly.
-  const trySave = useCallback(
-    async (p: PromiseLike<{ error: unknown }>) => {
-      const { error } = await p;
-      if (error) {
-        const msg = (error as { message?: string })?.message ?? 'Neznáma chyba.';
-        console.error('[product-pipeline] Supabase write error:', error);
-        setLastError(`Zmeny sa neuložili: ${msg}`);
-        scheduleFetch(); // revert optimistic state to DB truth
-        return false;
-      }
-      return true;
-    },
-    [scheduleFetch],
-  );
+  // ─── trySave ───────────────────────────────────────────────────────────────
+  // Awaits a Supabase write and surfaces errors WITHOUT reverting optimistic state.
+  // Accepts PromiseLike so PostgrestFilterBuilder (thenable, not full Promise) works.
+  const trySave = useCallback(async (p: PromiseLike<{ error: unknown }>) => {
+    const { error } = await p;
+    if (error) {
+      const msg = (error as { message?: string })?.message ?? 'Neznáma chyba.';
+      console.error('[product-pipeline] Supabase write error:', error);
+      // Show error but KEEP the optimistic update – do not revert state
+      setLastError(msg);
+      return false;
+    }
+    return true;
+  }, []);
 
   const clearError = useCallback(() => setLastError(null), []);
 
+  // ─── Realtime subscription ─────────────────────────────────────────────────
   useEffect(() => {
     fetchAll().finally(() => setLoading(false));
 
     const channel = supabase
       .channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pipelines' }, scheduleFetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, scheduleFetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleFetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' },     scheduleFetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' },  scheduleFetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_files' }, scheduleFetch)
       .subscribe();
 
@@ -172,16 +196,18 @@ export function useAppStore() {
 
   const activePipeline = state.pipelines.find(p => p.id === state.activePipelineId) ?? null;
 
+  // ─── Pipeline actions ──────────────────────────────────────────────────────
   const setActivePipeline = useCallback((id: string) => {
     localStorage.setItem(ACTIVE_KEY, id);
     setState(prev => ({ ...prev, activePipelineId: id }));
   }, []);
 
   const createPipeline = useCallback(async (name: string) => {
-    const id = crypto.randomUUID();
+    const id        = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
     setState(prev => ({
       ...prev,
-      pipelines: [...prev.pipelines, { id, name, tasks: [], createdAt: new Date().toISOString() }],
+      pipelines: [...prev.pipelines, { id, name, tasks: [], createdAt }],
       activePipelineId: id,
     }));
     localStorage.setItem(ACTIVE_KEY, id);
@@ -198,10 +224,9 @@ export function useAppStore() {
 
   const deletePipeline = useCallback(async (id: string) => {
     setState(prev => {
-      const pipelines = prev.pipelines.filter(p => p.id !== id);
+      const pipelines      = prev.pipelines.filter(p => p.id !== id);
       const activePipelineId = prev.activePipelineId === id
-        ? (pipelines[0]?.id ?? null)
-        : prev.activePipelineId;
+        ? (pipelines[0]?.id ?? null) : prev.activePipelineId;
       if (activePipelineId) localStorage.setItem(ACTIVE_KEY, activePipelineId);
       else localStorage.removeItem(ACTIVE_KEY);
       return { ...prev, pipelines, activePipelineId };
@@ -209,12 +234,13 @@ export function useAppStore() {
     await trySave(supabase.from('pipelines').delete().eq('id', id));
   }, [trySave]);
 
+  // ─── Task actions ──────────────────────────────────────────────────────────
   const createTask = useCallback(async (title: string, pipelineId: string) => {
     const pipeline = state.pipelines.find(p => p.id === pipelineId);
     if (!pipeline) return;
 
-    const id = crypto.randomUUID();
-    const createdAt = new Date().toISOString();
+    const id         = crypto.randomUUID();
+    const createdAt  = new Date().toISOString();
     const orderIndex = pipeline.tasks.reduce((m, t) => Math.max(m, t.order), -1) + 1;
 
     const task: Task = {
@@ -230,24 +256,25 @@ export function useAppStore() {
       ),
     }));
 
+    // Insert only columns that exist in DB — archived & completed_at excluded
     await trySave(supabase.from('tasks').insert({
       id, pipeline_id: pipelineId, title, description: '',
       status: 'Nový', priority: 'medium', assignee: '', deadline: '',
-      asset_links: [], order_index: orderIndex, archived: false, completed_at: null,
+      asset_links: [], order_index: orderIndex,
     }));
   }, [state.pipelines, trySave]);
 
   const updateTask = useCallback(async (taskId: string, patch: Partial<Task>, pipelineId: string) => {
-    const augmented = { ...patch };
+    const augmented: Partial<Task> = { ...patch };
 
-    // Auto-set completedAt when moving to Hotovo
+    // Auto-set completedAt in local state when moving to Hotovo
     if (patch.status === 'Hotovo') {
       augmented.completedAt = new Date().toISOString();
     }
-
-    // Auto-unarchive when moving away from Hotovo
+    // Auto-unarchive in local state when moving away from Hotovo
     if (patch.status && patch.status !== 'Hotovo') {
       augmented.archived = false;
+      toggleLocalArchived(taskId, false);
     }
 
     setState(prev => ({
@@ -259,17 +286,17 @@ export function useAppStore() {
       ),
     }));
 
+    // Only include DB columns that actually exist
     const dbPatch: Record<string, unknown> = {};
-    if (augmented.title !== undefined)       dbPatch.title        = augmented.title;
-    if (augmented.description !== undefined) dbPatch.description  = augmented.description;
-    if (augmented.status !== undefined)      dbPatch.status       = augmented.status;
-    if (augmented.priority !== undefined)    dbPatch.priority     = augmented.priority;
-    if (augmented.assignee !== undefined)    dbPatch.assignee     = augmented.assignee;
-    if (augmented.deadline !== undefined)    dbPatch.deadline     = augmented.deadline;
-    if (augmented.assetLinks !== undefined)  dbPatch.asset_links  = augmented.assetLinks;
-    if (augmented.order !== undefined)       dbPatch.order_index  = augmented.order;
-    if (augmented.completedAt !== undefined) dbPatch.completed_at = augmented.completedAt;
-    if (augmented.archived !== undefined)    dbPatch.archived     = augmented.archived;
+    if (augmented.title       !== undefined) dbPatch.title       = augmented.title;
+    if (augmented.description !== undefined) dbPatch.description = augmented.description;
+    if (augmented.status      !== undefined) dbPatch.status      = augmented.status;
+    if (augmented.priority    !== undefined) dbPatch.priority    = augmented.priority;
+    if (augmented.assignee    !== undefined) dbPatch.assignee    = augmented.assignee;
+    if (augmented.deadline    !== undefined) dbPatch.deadline    = augmented.deadline;
+    if (augmented.assetLinks  !== undefined) dbPatch.asset_links = augmented.assetLinks;
+    if (augmented.order       !== undefined) dbPatch.order_index = augmented.order;
+    // completed_at and archived skipped — columns don't exist in DB yet
 
     if (Object.keys(dbPatch).length > 0) {
       await trySave(supabase.from('tasks').update(dbPatch).eq('id', taskId));
@@ -277,6 +304,7 @@ export function useAppStore() {
   }, [trySave]);
 
   const deleteTask = useCallback(async (taskId: string, pipelineId: string) => {
+    toggleLocalArchived(taskId, false);
     setState(prev => ({
       ...prev,
       pipelines: prev.pipelines.map(p =>
@@ -289,6 +317,8 @@ export function useAppStore() {
   }, [trySave]);
 
   const archiveTask = useCallback(async (taskId: string, pipelineId: string) => {
+    // Always persist archive state locally — DB may not have the column yet
+    toggleLocalArchived(taskId, true);
     setState(prev => ({
       ...prev,
       pipelines: prev.pipelines.map(p =>
@@ -297,6 +327,7 @@ export function useAppStore() {
           : p,
       ),
     }));
+    // Try DB update — fails silently if column doesn't exist
     await trySave(supabase.from('tasks').update({ archived: true }).eq('id', taskId));
   }, [trySave]);
 
@@ -308,18 +339,12 @@ export function useAppStore() {
       pipelines: prev.pipelines.map(p => {
         if (p.id !== pipelineId) return p;
         const taskMap = new Map(p.tasks.map(t => [t.id, t]));
-
-        // Reordered (visible) tasks with new order indices starting at 0
         const reorderedTasks = orderedIds
           .map((id, index) => { const t = taskMap.get(id); return t ? { ...t, order: index } : null; })
           .filter(Boolean) as Task[];
-
-        // Tasks not in the reorder list (archived / other-filtered) keep their relative order
-        // but get pushed after the visible ones so they don't collide
         const otherTasks = p.tasks
           .filter(t => !orderedSet.has(t.id))
           .map((t, i) => ({ ...t, order: orderedIds.length + i }));
-
         return { ...p, tasks: [...reorderedTasks, ...otherTasks] };
       }),
     }));
@@ -329,12 +354,15 @@ export function useAppStore() {
         orderedIds.map((id, index) =>
           supabase.from('tasks').update({ order_index: index }).eq('id', id),
         ),
-      ).then(() => ({ error: null })),
+      )
+        .then(results => ({ error: results.find(r => r.error)?.error ?? null }))
+        .catch(err  => ({ error: err })),
     );
   }, [trySave]);
 
+  // ─── Comment actions ───────────────────────────────────────────────────────
   const addComment = useCallback(async (taskId: string, author: string, body: string, pipelineId: string) => {
-    const id = crypto.randomUUID();
+    const id        = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const comment: Comment = { id, author, body, createdAt };
 
@@ -350,58 +378,61 @@ export function useAppStore() {
     await trySave(supabase.from('comments').insert({ id, task_id: taskId, author, body }));
   }, [trySave]);
 
+  // ─── File actions (task_files table may not exist) ─────────────────────────
   const uploadFile = useCallback(async (taskId: string, file: File, pipelineId: string) => {
-    const ext = file.name.split('.').pop();
+    const ext  = file.name.split('.').pop();
     const path = `${taskId}/${crypto.randomUUID()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from('task-attachments')
       .upload(path, file);
+
     if (uploadError) {
-      setLastError(`Upload zlyhal: ${uploadError.message}`);
+      setLastError(`Upload: ${uploadError.message}. Skontroluj Supabase Storage bucket "task-attachments".`);
       return;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('task-attachments')
-      .getPublicUrl(path);
+    const { data: { publicUrl } } = supabase.storage.from('task-attachments').getPublicUrl(path);
 
-    const id = crypto.randomUUID();
+    const id        = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const taskFile: TaskFile = { id, name: file.name, url: publicUrl, size: file.size, createdAt };
 
-    await trySave(supabase.from('task_files').insert({
+    const ok = await trySave(supabase.from('task_files').insert({
       id, task_id: taskId, name: file.name, url: publicUrl, size: file.size,
     }));
 
-    setState(prev => ({
-      ...prev,
-      pipelines: prev.pipelines.map(p =>
-        p.id === pipelineId
-          ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, files: [...t.files, taskFile] } : t) }
-          : p,
-      ),
-    }));
+    if (ok) {
+      setState(prev => ({
+        ...prev,
+        pipelines: prev.pipelines.map(p =>
+          p.id === pipelineId
+            ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, files: [...t.files, taskFile] } : t) }
+            : p,
+        ),
+      }));
+    }
   }, [trySave]);
 
   const deleteFile = useCallback(async (taskId: string, fileId: string, fileUrl: string, pipelineId: string) => {
-    const marker = '/task-attachments/';
+    const marker    = '/task-attachments/';
     const markerIdx = fileUrl.indexOf(marker);
     if (markerIdx !== -1) {
       const storagePath = fileUrl.slice(markerIdx + marker.length);
       await supabase.storage.from('task-attachments').remove([storagePath]);
     }
 
-    await trySave(supabase.from('task_files').delete().eq('id', fileId));
-
-    setState(prev => ({
-      ...prev,
-      pipelines: prev.pipelines.map(p =>
-        p.id === pipelineId
-          ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, files: t.files.filter(f => f.id !== fileId) } : t) }
-          : p,
-      ),
-    }));
+    const ok = await trySave(supabase.from('task_files').delete().eq('id', fileId));
+    if (ok) {
+      setState(prev => ({
+        ...prev,
+        pipelines: prev.pipelines.map(p =>
+          p.id === pipelineId
+            ? { ...p, tasks: p.tasks.map(t => t.id === taskId ? { ...t, files: t.files.filter(f => f.id !== fileId) } : t) }
+            : p,
+        ),
+      }));
+    }
   }, [trySave]);
 
   return {
