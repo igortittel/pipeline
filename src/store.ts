@@ -433,7 +433,12 @@ export function useAppStore() {
     }
 
     if (uploadError) {
-      setLastError(`Upload zlyhal: ${uploadError.message}. Over Supabase Storage — bucket "task-attachments" musí existovať a byť verejný.`);
+      const isRls = /row-level security/i.test(uploadError.message);
+      setLastError(
+        isRls
+          ? 'Upload zlyhal: RLS blokuje zápis. V Supabase SQL Editore spusti: CREATE POLICY "anon_all" ON storage.objects FOR ALL USING (bucket_id = \'task-attachments\') WITH CHECK (bucket_id = \'task-attachments\');'
+          : `Upload zlyhal: ${uploadError.message}`
+      );
       return;
     }
 
