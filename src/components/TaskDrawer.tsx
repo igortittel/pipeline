@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Trash2, Calendar, User, Link, MessageSquare,
   Plus, Send, Paperclip, Download, File as FileIcon,
+  Copy, Check, Pencil, Trash,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { Task, Priority, Status, Comment, TaskFile } from '../types';
@@ -13,6 +14,8 @@ interface TaskDrawerProps {
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
   onAddComment: (taskId: string, author: string, body: string) => void;
+  onUpdateComment: (taskId: string, commentId: string, patch: { author?: string; body?: string }) => void;
+  onDeleteComment: (taskId: string, commentId: string) => void;
   onUploadFile: (taskId: string, file: File) => Promise<void>;
   onDeleteFile: (taskId: string, fileId: string, fileUrl: string) => Promise<void>;
 }
@@ -208,9 +211,20 @@ function FileAttachments({
   );
 }
 
-function CommentThread({ comments, onAdd }: { comments: Comment[]; onAdd: (author: string, body: string) => void }) {
+function CommentThread({
+  taskId, comments, onAdd, onUpdate, onDelete,
+}: {
+  taskId: string;
+  comments: Comment[];
+  onAdd: (author: string, body: string) => void;
+  onUpdate: (commentId: string, patch: { author?: string; body?: string }) => void;
+  onDelete: (commentId: string) => void;
+}) {
   const [author, setAuthor] = useState('');
   const [body, setBody] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAuthor, setEditAuthor] = useState('');
+  const [editBody, setEditBody] = useState('');
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -220,21 +234,67 @@ function CommentThread({ comments, onAdd }: { comments: Comment[]; onAdd: (autho
     }
   }
 
+  function startEdit(c: Comment) {
+    setEditingId(c.id);
+    setEditAuthor(c.author);
+    setEditBody(c.body);
+  }
+
+  function commitEdit(commentId: string) {
+    if (editBody.trim()) {
+      onUpdate(commentId, { author: editAuthor || 'Anonymous', body: editBody.trim() });
+    }
+    setEditingId(null);
+  }
+
   return (
     <div className="space-y-4">
       {comments.map(c => (
-        <div key={c.id} className="flex gap-3">
+        <div key={c.id} className="flex gap-3 group">
           <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center flex-shrink-0 text-[10px] font-medium text-[#888] uppercase">
             {c.author.charAt(0)}
           </div>
-          <div className="flex-1">
-            <div className="flex items-baseline gap-2 mb-1">
-              <span className="text-xs font-medium text-[#ccc]">{c.author}</span>
-              <span className="text-[10px] text-[#444]">
-                {new Date(c.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
-            <p className="text-xs text-[#888] leading-relaxed">{c.body}</p>
+          <div className="flex-1 min-w-0">
+            {editingId === c.id ? (
+              <div className="space-y-1.5">
+                <select value={editAuthor} onChange={e => setEditAuthor(e.target.value)}
+                  className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-2 py-1 text-xs text-white outline-none [color-scheme:dark]">
+                  {['Dávid', 'Igor', 'Stano'].map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+                <textarea value={editBody} onChange={e => setEditBody(e.target.value)}
+                  rows={3} autoFocus
+                  onKeyDown={e => { if (e.key === 'Escape') setEditingId(null); if (e.key === 'Enter' && e.metaKey) commitEdit(c.id); }}
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-white outline-none resize-none" />
+                <div className="flex gap-2">
+                  <button onClick={() => commitEdit(c.id)}
+                    className="text-xs text-green-400 hover:text-green-300 transition-colors flex items-center gap-1">
+                    <Check size={11} />Uložiť
+                  </button>
+                  <button onClick={() => setEditingId(null)}
+                    className="text-xs text-[#555] hover:text-[#888] transition-colors">Zrušiť</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-xs font-medium text-[#ccc]">{c.author}</span>
+                  <span className="text-[10px] text-[#444]">
+                    {new Date(c.createdAt).toLocaleString('sk-SK', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => startEdit(c)}
+                      className="text-[#555] hover:text-[#aaa] transition-colors p-0.5">
+                      <Pencil size={11} />
+                    </button>
+                    <button onClick={() => onDelete(c.id)}
+                      className="text-[#555] hover:text-red-400 transition-colors p-0.5">
+                      <Trash size={11} />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-[#888] leading-relaxed">{c.body}</p>
+              </>
+            )}
           </div>
         </div>
       ))}
@@ -256,13 +316,25 @@ function CommentThread({ comments, onAdd }: { comments: Comment[]; onAdd: (autho
   );
 }
 
-export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment, onUploadFile, onDeleteFile }: TaskDrawerProps) {
+export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment, onUpdateComment, onDeleteComment, onUploadFile, onDeleteFile }: TaskDrawerProps) {
+  const [copied, setCopied] = useState(false);
+
   function patch<K extends keyof Task>(key: K, value: Task[K]) {
     if (!task) return;
     onUpdate(task.id, { [key]: value });
     if (key === 'status' && value === 'Hotovo') {
       confetti({ particleCount: 160, spread: 90, origin: { y: 0.6 }, colors: ['#22c55e', '#86efac', '#4ade80', '#ffffff', '#bbf7d0'] });
     }
+  }
+
+  function copyLink() {
+    if (!task) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('task', task.id);
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
   return (
@@ -281,9 +353,16 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment, on
                 className="text-[#444] hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]">
                 <Trash2 size={14} />
               </button>
-              <button onClick={onClose} className="text-[#444] hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]">
-                <X size={16} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={copyLink} title="Kopírovať odkaz"
+                  className="text-[#444] hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1e1e1e] flex items-center gap-1.5">
+                  {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                  {copied && <span className="text-[11px] text-green-400">Skopírované</span>}
+                </button>
+                <button onClick={onClose} className="text-[#444] hover:text-white transition-colors p-1 rounded-lg hover:bg-[#1e1e1e]">
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             {/* Content */}
@@ -367,7 +446,13 @@ export function TaskDrawer({ task, onClose, onUpdate, onDelete, onAddComment, on
                   <MessageSquare size={12} />
                   Comments {task.comments.length > 0 && `(${task.comments.length})`}
                 </h4>
-                <CommentThread comments={task.comments} onAdd={(author, body) => onAddComment(task.id, author, body)} />
+                <CommentThread
+                  taskId={task.id}
+                  comments={task.comments}
+                  onAdd={(author, body) => onAddComment(task.id, author, body)}
+                  onUpdate={(commentId, patch) => onUpdateComment(task.id, commentId, patch)}
+                  onDelete={commentId => onDeleteComment(task.id, commentId)}
+                />
               </div>
             </div>
           </motion.div>

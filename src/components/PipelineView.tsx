@@ -140,7 +140,7 @@ export function PipelineView({ pipeline, onMenuClick, onCreateTask, onTaskClick,
         {/* Filter bar */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={filterSelect}>
-            <option value="">All statuses</option>
+            <option value="">Aktívne</option>
             {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             <option value="archived">Archivované {archivedCount > 0 ? `(${archivedCount})` : ''}</option>
           </select>

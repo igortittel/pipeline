@@ -100,6 +100,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const prevPipelinesRef = useRef<Pipeline[]>([]);
+  const initialTaskIdRef = useRef(new URLSearchParams(window.location.search).get('task'));
   const store = useAppStore();
 
   // Detect changes and generate notifications
@@ -123,6 +124,29 @@ export default function App() {
       else setSelectedTask(null);
     }
   }, [store.activePipeline]);
+
+  // Deep link: open task from ?task=<id> in URL after data loads
+  useEffect(() => {
+    if (store.loading || !initialTaskIdRef.current) return;
+    const taskId = initialTaskIdRef.current;
+    initialTaskIdRef.current = null;
+    for (const pipeline of store.state.pipelines) {
+      const task = pipeline.tasks.find(t => t.id === taskId);
+      if (task) {
+        store.setActivePipeline(pipeline.id);
+        setSelectedTask(task);
+        break;
+      }
+    }
+  }, [store.loading]);
+
+  // Sync URL with open task
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedTask) url.searchParams.set('task', selectedTask.id);
+    else url.searchParams.delete('task');
+    window.history.replaceState({}, '', url.toString());
+  }, [selectedTask]);
 
   function handleAuthenticated() {
     const quote = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
@@ -220,6 +244,8 @@ export default function App() {
             onUpdate={(id, patch) => store.updateTask(id, patch, pipelineId)}
             onDelete={id => { store.deleteTask(id, pipelineId); setSelectedTask(null); }}
             onAddComment={(taskId, author, body) => store.addComment(taskId, author, body, pipelineId)}
+            onUpdateComment={(taskId, commentId, patch) => store.updateComment(taskId, commentId, patch, pipelineId)}
+            onDeleteComment={(taskId, commentId) => store.deleteComment(taskId, commentId, pipelineId)}
             onUploadFile={(taskId, file) => store.uploadFile(taskId, file, pipelineId)}
             onDeleteFile={(taskId, fileId, url) => store.deleteFile(taskId, fileId, url, pipelineId)}
           />

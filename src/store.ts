@@ -317,7 +317,6 @@ export function useAppStore() {
   }, [trySave]);
 
   const archiveTask = useCallback(async (taskId: string, pipelineId: string) => {
-    // Always persist archive state locally — DB may not have the column yet
     toggleLocalArchived(taskId, true);
     setState(prev => ({
       ...prev,
@@ -327,9 +326,9 @@ export function useAppStore() {
           : p,
       ),
     }));
-    // Try DB update — fails silently if column doesn't exist
-    await trySave(supabase.from('tasks').update({ archived: true }).eq('id', taskId));
-  }, [trySave]);
+    // Silent — column may not exist; localStorage is the source of truth
+    supabase.from('tasks').update({ archived: true }).eq('id', taskId).then(() => {});
+  }, []);
 
   const reorderTasks = useCallback(async (orderedIds: string[], pipelineId: string) => {
     const orderedSet = new Set(orderedIds);
@@ -378,17 +377,63 @@ export function useAppStore() {
     await trySave(supabase.from('comments').insert({ id, task_id: taskId, author, body }));
   }, [trySave]);
 
+  const updateComment = useCallback(async (
+    taskId: string, commentId: string,
+    patch: { author?: string; body?: string },
+    pipelineId: string,
+  ) => {
+    setState(prev => ({
+      ...prev,
+      pipelines: prev.pipelines.map(p =>
+        p.id === pipelineId
+          ? { ...p, tasks: p.tasks.map(t =>
+              t.id === taskId
+                ? { ...t, comments: t.comments.map(c => c.id === commentId ? { ...c, ...patch } : c) }
+                : t) }
+          : p,
+      ),
+    }));
+    const dbPatch: Record<string, string> = {};
+    if (patch.author !== undefined) dbPatch.author = patch.author;
+    if (patch.body   !== undefined) dbPatch.body   = patch.body;
+    if (Object.keys(dbPatch).length > 0) {
+      await trySave(supabase.from('comments').update(dbPatch).eq('id', commentId));
+    }
+  }, [trySave]);
+
+  const deleteComment = useCallback(async (taskId: string, commentId: string, pipelineId: string) => {
+    setState(prev => ({
+      ...prev,
+      pipelines: prev.pipelines.map(p =>
+        p.id === pipelineId
+          ? { ...p, tasks: p.tasks.map(t =>
+              t.id === taskId
+                ? { ...t, comments: t.comments.filter(c => c.id !== commentId) }
+                : t) }
+          : p,
+      ),
+    }));
+    await trySave(supabase.from('comments').delete().eq('id', commentId));
+  }, [trySave]);
+
   // ─── File actions (task_files table may not exist) ─────────────────────────
   const uploadFile = useCallback(async (taskId: string, file: File, pipelineId: string) => {
     const ext  = file.name.split('.').pop();
     const path = `${taskId}/${crypto.randomUUID()}.${ext}`;
 
-    const { error: uploadError } = await supabase.storage
+    let { error: uploadError } = await supabase.storage
       .from('task-attachments')
       .upload(path, file);
 
+    // Try to create the bucket if it doesn't exist, then retry
+    if (uploadError && /bucket not found/i.test(uploadError.message)) {
+      await supabase.storage.createBucket('task-attachments', { public: true });
+      const retry = await supabase.storage.from('task-attachments').upload(path, file);
+      uploadError = retry.error;
+    }
+
     if (uploadError) {
-      setLastError(`Upload: ${uploadError.message}. Skontroluj Supabase Storage bucket "task-attachments".`);
+      setLastError(`Upload zlyhal: ${uploadError.message}. Over Supabase Storage — bucket "task-attachments" musí existovať a byť verejný.`);
       return;
     }
 
@@ -451,6 +496,8 @@ export function useAppStore() {
     archiveTask,
     reorderTasks,
     addComment,
+    updateComment,
+    deleteComment,
     uploadFile,
     deleteFile,
   };
